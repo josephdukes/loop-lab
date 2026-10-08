@@ -1,0 +1,85 @@
+# Loop Lab: build, test and publish to GitHub Pages.
+#
+# This runs by itself every time files on the "main" branch change, and you can also start it by hand
+# (Actions tab > "Deploy to GitHub Pages" > Run workflow). It contains no secrets and needs none.
+#
+# THE WEB ADDRESS (read this before you install the app on your phone)
+# --------------------------------------------------------------------
+# The app is built for ONE web address. By default that is
+#     https://<your-github-username>.github.io/<repository-name>/
+# which is why the build setting LOOPLAB_BASE below defaults to "/<repository-name>/".
+#
+# To use your own subdomain instead (for example loop.thechocdoc.co.uk), the app must be built for the
+# root of that address, which is the base "/". The easy way, with no editing of this file:
+#     GitHub repository > Settings > Secrets and variables > Actions > Variables tab >
+#     New repository variable. Name: LOOPLAB_BASE   Value: /
+# then run this workflow again. (A variable is not a secret. "/" is just a path.)
+# Or edit the LOOPLAB_BASE line below so that it reads:   LOOPLAB_BASE: "/"
+#
+# NEVER CHANGE THE ADDRESS AFTER YOU INSTALL THE APP. Your training data is stored in the phone's browser and
+# is tied to the exact address. A different address (including renaming the repository, or switching to a
+# custom domain later) looks like a brand-new, empty app. If it ever must change: use Backup in the old app,
+# then Restore at the new address. See docs/SETUP-GUIDE.md.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only what Pages needs: read the code, publish the site.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. A deploy that has started is allowed to finish rather than being cancelled halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # Uses the repository variable LOOPLAB_BASE if you created one; otherwise "/<repository-name>/".
+  LOOPLAB_BASE: ${{ vars.LOOPLAB_BASE || format('/{0}/', github.event.repository.name) }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exactly what package-lock.json lists
+        run: npm ci
+
+      - name: Run the automated tests
+        run: npm test
+
+      - name: Build the site (base path is ${{ env.LOOPLAB_BASE }})
+        run: npm run build
+
+      - name: Prepare GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Package the finished site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
